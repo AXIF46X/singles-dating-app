@@ -32,7 +32,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Incorrect email or password." }, { status: 401 });
   }
 
-  await createSession(user.id);
+  const token = await createSession(user.id);
 
-  return NextResponse.json({ user: { id: user.id, email: user.email } });
+  return NextResponse.json({
+    user: { id: user.id, email: user.email },
+    token,
+  });
 }

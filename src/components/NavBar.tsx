@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { apiFetch } from "@/lib/client";
 
 export default function NavBar({
   photoUrl,
@@ -20,7 +21,7 @@ export default function NavBar({
   async function handleLogout() {
     setLoading(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await apiFetch("/api/auth/logout", { method: "POST" });
     } finally {
       setLoading(false);
       onLogout();

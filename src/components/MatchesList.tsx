@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/client";
 
 type Profile = {
   userId: string;
@@ -41,7 +42,7 @@ export default function MatchesList({
   async function refresh() {
     setLoading(true);
     try {
-      const res = await fetch("/api/matches", { cache: "no-store" });
+      const res = await apiFetch("/api/matches", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setMatches(data.matches ?? []);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { apiFetch, captureToken } from "@/lib/client";
 
 export default function AuthForm({
   mode,
@@ -19,13 +20,13 @@ export default function AuthForm({
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch(`/api/auth/${mode}`, {
+      const res = await apiFetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
       // Parse JSON safely — server may return HTML on cold-start / proxy error
-      let data: { error?: string } | null = null;
+      let data: { error?: string; token?: string } | null = null;
       try {
         data = await res.json();
       } catch {
@@ -35,6 +36,8 @@ export default function AuthForm({
         setError(data?.error ?? `Request failed (HTTP ${res.status}). Please try again.`);
         return;
       }
+      // Persist the session token (cookies are blocked in iframe previews)
+      captureToken(data);
       onAuthenticated?.();
     } catch {
       // Network error / connection refused / CORS / cold-start timeout

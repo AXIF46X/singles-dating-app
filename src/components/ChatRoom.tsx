@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import AvatarAnimator from "@/components/AvatarAnimator";
+import { apiFetch, getSessionToken } from "@/lib/client";
 
 type PartnerProfile = {
   userId: string;
@@ -140,8 +141,8 @@ export default function ChatRoom({
       try {
         // Fetch online count + chat state in parallel for a snappier load
         const [stateRes, onlineRes] = await Promise.all([
-          fetch("/api/chat/state", { cache: "no-store" }),
-          fetch("/api/online", { cache: "no-store" }),
+          apiFetch("/api/chat/state", { cache: "no-store" }),
+          apiFetch("/api/online", { cache: "no-store" }),
         ]);
         if (onlineRes.ok) {
           const online = await onlineRes.json();
@@ -160,7 +161,8 @@ export default function ChatRoom({
 
     hydrate();
 
-    const es = new EventSource("/api/chat/events");
+    const token = getSessionToken();
+    const es = new EventSource(token ? `/api/chat/events?token=${encodeURIComponent(token)}` : "/api/chat/events");
     es.onmessage = (event) => {
       let data: any;
       try {
@@ -209,7 +211,7 @@ export default function ChatRoom({
     if (queuePollRef.current) clearInterval(queuePollRef.current);
     queuePollRef.current = setInterval(async () => {
       try {
-        const res = await fetch("/api/chat/state", { cache: "no-store" });
+        const res = await apiFetch("/api/chat/state", { cache: "no-store" });
         if (!res.ok) return;
         const data: Snapshot = await res.json();
         if (data.hasSession && data.status === "active" && data.partner) {
@@ -242,7 +244,7 @@ export default function ChatRoom({
     feedbackTimerRef.current = setTimeout(async () => {
       setPartnerTalking(false);
       try {
-        const res = await fetch("/api/chat/state", { cache: "no-store" });
+        const res = await apiFetch("/api/chat/state", { cache: "no-store" });
         if (res.ok) {
           const data: Snapshot = await res.json();
           setMyDecision(data.myDecision);
@@ -266,7 +268,7 @@ export default function ChatRoom({
     setPartnerTyping(false);
     addSystemLog("Connecting to server...");
     try {
-      const res = await fetch("/api/chat/start", {
+      const res = await apiFetch("/api/chat/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ interests }),
@@ -297,7 +299,7 @@ export default function ChatRoom({
     setPartnerTyping(false);
     if (notifyServer) {
       addSystemLog("Disconnecting...");
-      await fetch("/api/chat/end", { method: "POST" }).catch(() => {});
+      await apiFetch("/api/chat/end", { method: "POST" }).catch(() => {});
     }
     setStatus("idle");
     setPartner(null);
@@ -318,7 +320,7 @@ export default function ChatRoom({
     setPartnerTyping(false);
     addSystemLog("Finding a new stranger...");
     try {
-      const res = await fetch("/api/chat/next", {
+      const res = await apiFetch("/api/chat/next", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ interests }),
@@ -350,7 +352,7 @@ export default function ChatRoom({
     if (!text || status !== "connected" || !sessionId) return;
     setDraft("");
     try {
-      const res = await fetch("/api/chat/message", {
+      const res = await apiFetch("/api/chat/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
@@ -366,7 +368,7 @@ export default function ChatRoom({
     if (!sessionId) return;
     setMyDecision(decision);
     try {
-      const res = await fetch("/api/chat/decision", {
+      const res = await apiFetch("/api/chat/decision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, decision }),

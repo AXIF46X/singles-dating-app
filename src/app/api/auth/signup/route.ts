@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     select: { id: true, email: true },
   });
 
-  await createSession(user.id);
+  const token = await createSession(user.id);
 
-  return NextResponse.json({ user });
+  return NextResponse.json({ user, token });
 }

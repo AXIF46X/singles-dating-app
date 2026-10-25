@@ -1,9 +1,10 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
 
 export const SESSION_COOKIE = "singlescan_session";
+export const SESSION_HEADER = "x-session-token";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 export async function createSession(userId: string) {
@@ -33,10 +34,19 @@ export async function destroySession() {
 }
 
 export async function getCurrentUser() {
+  // Prefer the x-session-token header (works inside cross-origin iframes where
+  // third-party cookies are blocked), then fall back to the session cookie.
+  const headerStore = await headers();
+  const headerToken = headerStore.get(SESSION_HEADER);
   const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const token = headerToken || cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
+  return validateSessionToken(token);
+}
+
+/** Shared token validation used by header/cookie auth. */
+async function validateSessionToken(token: string) {
   const row = await db.session.findUnique({
     where: { token },
     include: { user: true },
@@ -52,6 +62,20 @@ export async function getCurrentUser() {
     email: row.user.email,
     createdAt: row.user.createdAt,
   };
+}
+
+/**
+ * Auth for endpoints that cannot send custom headers (e.g. EventSource SSE).
+ * Accepts ?token=... in the query string, then falls back to header/cookie.
+ */
+export async function getCurrentUserWithTokenParam(request: Request) {
+  const url = new URL(request.url);
+  const tokenParam = url.searchParams.get("token");
+  if (tokenParam) {
+    const user = await validateSessionToken(tokenParam);
+    if (user) return user;
+  }
+  return getCurrentUser();
 }
 
 export type ProfileRow = {

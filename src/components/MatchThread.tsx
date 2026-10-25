@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/client";
 
 type Profile = {
   userId: string;
@@ -41,7 +42,7 @@ export default function MatchThread({
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/matches/${matchId}/messages`, { cache: "no-store" });
+      const res = await apiFetch(`/api/matches/${matchId}/messages`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages ?? []);
@@ -70,7 +71,7 @@ export default function MatchThread({
     setSending(true);
     setError(null);
     try {
-      const res = await fetch(`/api/matches/${matchId}/messages`, {
+      const res = await apiFetch(`/api/matches/${matchId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: text }),

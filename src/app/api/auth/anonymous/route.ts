@@ -82,10 +82,13 @@ export async function POST(request: Request) {
     },
   });
 
-  await createSession(user.id);
+  const token = await createSession(user.id);
 
+  // Return the token so the client can store it in localStorage — cookies are
+  // blocked in cross-origin iframe previews.
   return NextResponse.json({
     user: { id: user.id, name, interests },
+    token,
     anonymous: true,
   });
 }

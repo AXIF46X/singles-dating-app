@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch, captureToken, clearSessionToken } from "@/lib/client";
 import AuthForm from "@/components/AuthForm";
 import ChatRoom from "@/components/ChatRoom";
 import MatchesList from "@/components/MatchesList";
@@ -60,7 +61,7 @@ export default function Home() {
 
   const refreshMe = useCallback(async () => {
     try {
-      const res = await fetch("/api/me", { cache: "no-store" });
+      const res = await apiFetch("/api/me", { cache: "no-store" });
       if (!res.ok) return;
       const data: MeResponse = await res.json();
       setUser(data.user);
@@ -82,7 +83,7 @@ export default function Home() {
     let cancelled = false;
     async function poll() {
       try {
-        const res = await fetch("/api/online", { cache: "no-store" });
+        const res = await apiFetch("/api/online", { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && typeof data?.online === "number") {
@@ -120,7 +121,7 @@ export default function Home() {
     setAnonStarting(true);
     setAnonError(null);
     try {
-      const res = await fetch("/api/auth/anonymous", {
+      const res = await apiFetch("/api/auth/anonymous", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ interests }),
@@ -136,6 +137,9 @@ export default function Home() {
         setAnonError(msg);
         return;
       }
+      const data = await res.json();
+      // Store the session token — cookies are blocked in iframe previews
+      captureToken(data);
       await refreshMe();
     } catch {
       setAnonError("Cannot reach the server. Please wait a moment and try again.");
@@ -363,7 +367,8 @@ export default function Home() {
           <div className="mb-8 text-center">
             <button
               onClick={async () => {
-                await fetch("/api/auth/logout", { method: "POST" });
+                await apiFetch("/api/auth/logout", { method: "POST" });
+                clearSessionToken();
                 await refreshMe();
               }}
               className="float-left text-xs text-slate-400 hover:text-rose-300"
@@ -401,7 +406,8 @@ export default function Home() {
           setActiveThread(null);
         }}
         onLogout={async () => {
-          await fetch("/api/auth/logout", { method: "POST" });
+          await apiFetch("/api/auth/logout", { method: "POST" });
+          clearSessionToken();
           await refreshMe();
         }}
       />

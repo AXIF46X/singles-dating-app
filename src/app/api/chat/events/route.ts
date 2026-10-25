@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUserWithTokenParam } from "@/lib/auth";
 import { addOnline, removeOnline, subscribe } from "@/lib/rt";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const user = await getCurrentUser();
+export async function GET(request: Request) {
+  // EventSource cannot send custom headers, so the client passes the session
+  // token as ?token=... — falls back to header/cookie auth if absent.
+  const user = await getCurrentUserWithTokenParam(request);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

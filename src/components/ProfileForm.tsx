@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { apiFetch } from "@/lib/client";
 import { GENDER_OPTIONS, INTEREST_OPTIONS, LOOKING_FOR_OPTIONS } from "@/lib/constants";
 
 type ProfileFormValues = {
@@ -78,7 +79,7 @@ export default function ProfileForm({
 
     setLoading(true);
     try {
-      const res = await fetch("/api/profile", {
+      const res = await apiFetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
