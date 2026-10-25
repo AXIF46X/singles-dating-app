@@ -30,10 +30,13 @@ declare global {
   var __singlesRt:
     | {
         online: Map<string, number>;
-        waitingQueue: string[];
+        // Waiting queue: userId -> interests (so we can match by shared topics)
+        waitingQueue: { userId: string; interests: string[] }[];
         activeSessions: Map<string, InMemorySession>;
         userToSession: Map<string, string>;
         subscribers: Map<string, Set<(payload: any) => void>>;
+        // Real (non-demo) user IDs currently considered "online" — for the live count
+        realOnlineIds: Set<string>;
       }
     | undefined;
 }
@@ -46,7 +49,16 @@ function getStore() {
       activeSessions: new Map(),
       userToSession: new Map(),
       subscribers: new Map(),
+      realOnlineIds: new Set(),
     };
+  } else {
+    // HMR safety: backfill any newly-added fields on a stale singleton
+    const s = global.__singlesRt;
+    if (!Array.isArray(s.waitingQueue)) {
+      // Old shape: queue was string[] — migrate to new { userId, interests }[] shape
+      s.waitingQueue = [];
+    }
+    if (!s.realOnlineIds) s.realOnlineIds = new Set();
   }
   return global.__singlesRt;
 }
@@ -56,6 +68,12 @@ function getStore() {
 export function addOnline(userId: string) {
   const store = getStore();
   store.online.set(userId, (store.online.get(userId) ?? 0) + 1);
+  // Mark this user as a real online user (so the online counter increments).
+  // Demo bots never call addOnline, so they never count toward the live number.
+  store.realOnlineIds.add(userId);
+  // Broadcast an updated online count to every subscriber so the homepage
+  // counter ticks live.
+  broadcastOnlineCount();
 }
 
 export function removeOnline(userId: string) {
@@ -63,9 +81,30 @@ export function removeOnline(userId: string) {
   const count = (store.online.get(userId) ?? 0) - 1;
   if (count <= 0) {
     store.online.delete(userId);
-    store.waitingQueue = store.waitingQueue.filter((id) => id !== userId);
+    store.waitingQueue = store.waitingQueue.filter((w) => w.userId !== userId);
+    store.realOnlineIds.delete(userId);
   } else {
     store.online.set(userId, count);
+  }
+  broadcastOnlineCount();
+}
+
+/** Returns the current number of real users online (excludes demo bots). */
+export function getOnlineCount() {
+  return getStore().realOnlineIds.size;
+}
+
+function broadcastOnlineCount() {
+  const count = getOnlineCount();
+  const store = getStore();
+  for (const subs of store.subscribers.values()) {
+    for (const cb of subs) {
+      try {
+        cb({ type: "online_count", count });
+      } catch {
+        // ignore
+      }
+    }
   }
 }
 
@@ -235,7 +274,7 @@ export function getActiveSessionForUser(userId: string) {
   return store.activeSessions.get(id) ?? null;
 }
 
-export async function startSession(userId: string) {
+export async function startSession(userId: string, interests: string[] = []) {
   const store = getStore();
 
   // 1) resume in-memory session
@@ -246,11 +285,28 @@ export async function startSession(userId: string) {
   const recovered = await recoverSessionFromDb(userId);
   if (recovered) return recovered;
 
-  // 3) try a real waiting partner
-  store.waitingQueue = store.waitingQueue.filter((id) => id !== userId);
-  const partnerId = store.waitingQueue.shift();
-  if (partnerId && partnerId !== userId) {
-    return createSessionRecord(userId, partnerId, false);
+  // 3) try a real waiting partner — prefer someone who shares the most interests
+  store.waitingQueue = store.waitingQueue.filter((w) => w.userId !== userId);
+
+  let bestIdx = -1;
+  let bestScore = -1;
+  for (let i = 0; i < store.waitingQueue.length; i++) {
+    const candidate = store.waitingQueue[i];
+    if (candidate.userId === userId) continue;
+    const shared = candidate.interests.filter((t) =>
+      interests.map((s) => s.toLowerCase()).includes(t.toLowerCase()),
+    ).length;
+    // Score: shared-interest matches weighted 10x; otherwise still considered (FIFO)
+    const score = shared * 10 + (i === 0 ? 1 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+
+  if (bestIdx >= 0) {
+    const partnerEntry = store.waitingQueue.splice(bestIdx, 1)[0];
+    return createSessionRecord(userId, partnerEntry.userId, false);
   }
 
   // 4) fall back to a demo partner
@@ -260,7 +316,7 @@ export async function startSession(userId: string) {
   }
 
   // 5) no one available -> queue this user until someone shows up (in-memory only)
-  store.waitingQueue.push(userId);
+  store.waitingQueue.push({ userId, interests });
   const session: InMemorySession = {
     id: uuidv4(),
     userAId: userId,
@@ -309,9 +365,9 @@ export async function endSession(userId: string) {
   }
 }
 
-export async function nextPartner(userId: string) {
+export async function nextPartner(userId: string, interests: string[] = []) {
   await endSession(userId);
-  return startSession(userId);
+  return startSession(userId, interests);
 }
 
 /* ---------- messages (persisted) ---------- */

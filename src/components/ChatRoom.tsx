@@ -46,11 +46,13 @@ export default function ChatRoom({
   myName,
   myPhotoUrl,
   onOpenMatches,
+  interests = [],
 }: {
   currentUserId: string;
   myName: string;
   myPhotoUrl: string;
   onOpenMatches?: () => void;
+  interests?: string[];
 }) {
   const [status, setStatus] = useState<SessionStatus>("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -69,6 +71,7 @@ export default function ChatRoom({
   const [partnerTalking, setPartnerTalking] = useState(false);
   const [partnerTyping, setPartnerTyping] = useState(false);
   const [myDecision, setMyDecision] = useState<"liked" | "passed" | "pending">("pending");
+  const [onlineCount, setOnlineCount] = useState<number | null>(null);
 
   const feedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
@@ -135,9 +138,19 @@ export default function ChatRoom({
 
     async function hydrate() {
       try {
-        const res = await fetch("/api/chat/state", { cache: "no-store" });
-        if (!res.ok) return;
-        const data: Snapshot = await res.json();
+        // Fetch online count + chat state in parallel for a snappier load
+        const [stateRes, onlineRes] = await Promise.all([
+          fetch("/api/chat/state", { cache: "no-store" }),
+          fetch("/api/online", { cache: "no-store" }),
+        ]);
+        if (onlineRes.ok) {
+          const online = await onlineRes.json();
+          if (typeof online?.online === "number") {
+            setOnlineCount(Math.max(1, online.online));
+          }
+        }
+        if (!stateRes.ok) return;
+        const data: Snapshot = await stateRes.json();
         if (cancelled || !data.hasSession) return;
         applySnapshot(data);
       } catch {
@@ -179,6 +192,8 @@ export default function ChatRoom({
           setStatus("matched");
           addSystemLog("You both liked each other — it's a match!", "success");
         }
+      } else if (data.type === "online_count" && typeof data.count === "number") {
+        setOnlineCount(Math.max(1, data.count));
       }
     };
 
@@ -251,7 +266,11 @@ export default function ChatRoom({
     setPartnerTyping(false);
     addSystemLog("Connecting to server...");
     try {
-      const res = await fetch("/api/chat/start", { method: "POST" });
+      const res = await fetch("/api/chat/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interests }),
+      });
       if (!res.ok) throw new Error();
       const data: Snapshot = await res.json();
       if (!data.hasSession) throw new Error();
@@ -299,7 +318,11 @@ export default function ChatRoom({
     setPartnerTyping(false);
     addSystemLog("Finding a new stranger...");
     try {
-      const res = await fetch("/api/chat/next", { method: "POST" });
+      const res = await fetch("/api/chat/next", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interests }),
+      });
       if (!res.ok) throw new Error();
       const data: Snapshot = await res.json();
       setSessionId(data.sessionId);
@@ -366,6 +389,12 @@ export default function ChatRoom({
 
   const connected = status === "connected";
   const partnerName = partner?.name ?? "Stranger";
+  const sharedInterests =
+    partner?.interests && interests.length > 0
+      ? partner.interests.filter((t) =>
+          interests.map((s) => s.toLowerCase()).includes(t.toLowerCase()),
+        )
+      : [];
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -388,15 +417,26 @@ export default function ChatRoom({
           {status === "idle" && "Not connected. Press Connect to start."}
           {status === "matched" && "It's a match! Continue in your matches."}
         </span>
-        {(connected || status === "feedback") && (
-          <span className="flex items-center gap-1.5 text-xs uppercase tracking-wider">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+        <span className="flex items-center gap-3 text-xs uppercase tracking-wider">
+          {onlineCount !== null && (
+            <span className="flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-500" />
+              </span>
+              {onlineCount} online
             </span>
-            Live
-          </span>
-        )}
+          )}
+          {(connected || status === "feedback") && (
+            <span className="flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+              Live
+            </span>
+          )}
+        </span>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.15fr_1fr]">
@@ -458,6 +498,23 @@ export default function ChatRoom({
               )}
             </div>
           </div>
+
+          {/* shared-interests strip — only when matched on shared topics */}
+          {connected && sharedInterests.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white/5 px-3 py-2 text-xs ring-1 ring-white/10">
+              <span className="font-semibold uppercase tracking-wider text-slate-400">
+                Both like:
+              </span>
+              {sharedInterests.map((t) => (
+                <span
+                  key={t}
+                  className="rounded-full bg-gradient-to-r from-rose-500 to-fuchsia-600 px-2.5 py-0.5 font-semibold text-white"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* you window */}
           <div className="relative overflow-hidden rounded-3xl bg-slate-900 ring-1 ring-white/10">

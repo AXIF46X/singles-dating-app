@@ -2,13 +2,18 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getStateSnapshot, startSession } from "@/lib/rt";
 
-export async function POST() {
+export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "You must be signed in." }, { status: 401 });
   }
 
-  await startSession(user.id);
+  const body = await request.json().catch(() => ({}));
+  const interests: string[] = Array.isArray(body?.interests)
+    ? body.interests.filter((t: any) => typeof t === "string").slice(0, 8)
+    : [];
+
+  await startSession(user.id, interests);
   const snapshot = await getStateSnapshot(user.id);
   return NextResponse.json(snapshot);
 }
