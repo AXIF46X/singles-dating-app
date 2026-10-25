@@ -1,0 +1,133 @@
+// Prisma schema for the Singlescan social-discovery app (SQLite)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  passwordHash String
+  isDemo       Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  sessions             Session[]
+  profile              Profile?
+  chatSessionsAsA      ChatSession[] @relation("ChatSessionsA")
+  chatSessionsAsB      ChatSession[] @relation("ChatSessionsB")
+  sessionInteractions  SessionInteraction[]
+  sessionMessages      SessionMessage[]
+  matchesAsA           Match[] @relation("MatchesA")
+  matchesAsB           Match[] @relation("MatchesB")
+  messages             Message[]
+}
+
+model Session {
+  token     String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Profile {
+  userId     String   @id
+  name       String
+  age        Int
+  gender     String   @default("")
+  lookingFor String   @default("")
+  location   String   @default("")
+  bio        String   @default("")
+  // SQLite doesn't have native arrays — store as JSON string
+  interests  String   @default("[]")
+  photoUrl   String   @default("")
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ChatSession {
+  id        String    @id @default(cuid())
+  userAId   String
+  userBId   String
+  status    String    @default("active") // active | ended
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  userA         User               @relation("ChatSessionsA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB         User               @relation("ChatSessionsB", fields: [userBId], references: [id], onDelete: Cascade)
+  interactions  SessionInteraction[]
+  messages      SessionMessage[]
+  matches       Match[]
+
+  @@index([userAId])
+  @@index([userBId])
+  @@index([status])
+}
+
+model SessionInteraction {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  targetId  String
+  decision  String // liked | passed
+  createdAt DateTime @default(now())
+
+  chatSession ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([userId])
+}
+
+model SessionMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  senderId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  chatSession ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model Match {
+  id         String   @id @default(cuid())
+  userAId    String
+  userBId    String
+  sessionId  String?
+  createdAt  DateTime @default(now())
+
+  userA       User          @relation("MatchesA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB       User          @relation("MatchesB", fields: [userBId], references: [id], onDelete: Cascade)
+  chatSession ChatSession?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  messages    Message[]
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  matchId   String
+  senderId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+}
