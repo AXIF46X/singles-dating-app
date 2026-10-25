@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=file:/app/db/custom.db
+      - NODE_ENV=production
+    volumes:
+      - app-db:/app/db
+    restart: unless-stopped
+
+volumes:
+  app-db:
