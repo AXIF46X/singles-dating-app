@@ -24,14 +24,21 @@ export default function AuthForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
+      // Parse JSON safely — server may return HTML on cold-start / proxy error
+      let data: { error?: string } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Non-JSON response (likely HTML error page) — fall through to generic
+      }
       if (!res.ok) {
-        setError(data.error ?? "Something went wrong.");
+        setError(data?.error ?? `Request failed (HTTP ${res.status}). Please try again.`);
         return;
       }
       onAuthenticated?.();
     } catch {
-      setError("Something went wrong. Please try again.");
+      // Network error / connection refused / CORS / cold-start timeout
+      setError("Cannot reach the server. Please wait a moment and try again.");
     } finally {
       setLoading(false);
     }

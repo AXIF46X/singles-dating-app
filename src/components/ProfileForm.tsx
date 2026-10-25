@@ -83,14 +83,19 @@ export default function ProfileForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       });
-      const data = await res.json();
+      let data: { error?: string } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Non-JSON response — fall through
+      }
       if (!res.ok) {
-        setError(data.error ?? "Something went wrong.");
+        setError(data?.error ?? `Request failed (HTTP ${res.status}). Please try again.`);
         return;
       }
       onSaved?.();
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError("Cannot reach the server. Please wait a moment and try again.");
     } finally {
       setLoading(false);
     }
